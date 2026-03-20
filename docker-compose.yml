@@ -1,0 +1,14 @@
+services:
+  library:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SECRET_KEY=change-this-in-production
+      - DATABASE_URL=sqlite:///./data/library.db
+    restart: unless-stopped
