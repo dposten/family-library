@@ -1,0 +1,12 @@
+services:
+  family-library:
+    image: ghcr.io/dposten/family-library:latest
+    container_name: FamilyLibrary
+    ports:
+      - "8000:8000"     # change left side to any free host port e.g. 8123:8000
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SECRET_KEY=REPLACE_WITH_A_LONG_RANDOM_STRING
+      - DATABASE_URL=sqlite:///./data/library.db
+    restart: unless-stopped
