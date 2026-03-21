@@ -8,6 +8,12 @@ const STATUS_STYLES = {
 
 const STATUS_LABELS = { unread: "Unread", reading: "Reading", read: "Read" };
 
+const TAG_COLORS = {
+  type: "bg-blue-100 text-blue-700",
+  genre: "bg-purple-100 text-purple-700",
+  age: "bg-green-100 text-green-700",
+};
+
 export default function BookCard({ book }) {
   const status = book.my_status || "unread";
 
@@ -39,9 +45,19 @@ export default function BookCard({ book }) {
           {book.author && (
             <p className="text-xs text-gray-500 truncate">{book.author}</p>
           )}
-          <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[status]}`}>
-            {STATUS_LABELS[status]}
-          </span>
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[status]}`}>
+              {STATUS_LABELS[status]}
+            </span>
+            {(book.tags || []).slice(0, 2).map((tag) => (
+              <span
+                key={tag.id}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium ${TAG_COLORS[tag.category] || TAG_COLORS.genre}`}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </Link>

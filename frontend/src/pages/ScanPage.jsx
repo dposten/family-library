@@ -11,6 +11,7 @@ export default function ScanPage() {
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [manualIsbn, setManualIsbn] = useState("");
+  const [coverFile, setCoverFile] = useState(null);
 
   async function handleDetected(isbn) {
     if (loading) return;
@@ -37,6 +38,9 @@ export default function ScanPage() {
     setAdding(true);
     try {
       const book = await api.scanAdd(lookupResult);
+      if (coverFile) {
+        await api.uploadCover(book.id, coverFile).catch(() => {});
+      }
       navigate(`/book/${book.id}`);
     } catch (err) {
       setError(err.message);
@@ -49,6 +53,7 @@ export default function ScanPage() {
     setError("");
     setScanning(true);
     setManualIsbn("");
+    setCoverFile(null);
   }
 
   return (
@@ -137,6 +142,22 @@ export default function ScanPage() {
                 <p className="text-xs text-gray-400 mt-1">ISBN: {lookupResult.isbn}</p>
               </>
             )}
+
+            {/* Cover upload */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {!lookupResult.cover_url ? "Add cover photo (optional)" : "Replace cover photo (optional)"}
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setCoverFile(e.target.files[0] || null)}
+                className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-sky-50 file:text-sky-600 hover:file:bg-sky-100"
+              />
+              {coverFile && (
+                <p className="text-xs text-gray-400 mt-1">{coverFile.name}</p>
+              )}
+            </div>
 
             {error && (
               <p className="text-red-500 text-sm mt-3 bg-red-50 px-3 py-2 rounded-lg">{error}</p>

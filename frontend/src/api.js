@@ -43,6 +43,11 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return request(`/api/books${q ? "?" + q : ""}`);
   },
+  getTags: () => request("/api/books/tags"),
+  addBookTag: (bookId, tagId) =>
+    request(`/api/books/${bookId}/tags/${tagId}`, { method: "POST" }),
+  removeBookTag: (bookId, tagId) =>
+    request(`/api/books/${bookId}/tags/${tagId}`, { method: "DELETE" }),
   getBook: (id) => request(`/api/books/${id}`),
   lookupIsbn: (isbn) => request(`/api/books/lookup?isbn=${encodeURIComponent(isbn)}`),
   addBook: (data) => request("/api/books", { method: "POST", body: JSON.stringify(data) }),
@@ -60,6 +65,36 @@ export const api = {
       body: JSON.stringify({ book_id: bookId, loaned_to_user_id: loanedToUserId }),
     }),
   returnLoan: (loanId) => request(`/api/loans/${loanId}/return`, { method: "PUT" }),
+
+  // Cover upload (multipart — cannot use request() helper)
+  uploadCover: (bookId, file) => {
+    const token = getToken();
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`/api/books/${bookId}/cover`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Upload failed");
+      }
+      return res.json();
+    });
+  },
+
+  // Metadata refresh
+  refreshMetadata: (bookId) => request(`/api/books/${bookId}/refresh`, { method: "PUT" }),
+
+  // Notes
+  getNotes: (bookId) => request(`/api/books/${bookId}/notes`),
+  addNote: (bookId, content) =>
+    request(`/api/books/${bookId}/notes`, { method: "POST", body: JSON.stringify({ content }) }),
+  editNote: (bookId, noteId, content) =>
+    request(`/api/books/${bookId}/notes/${noteId}`, { method: "PUT", body: JSON.stringify({ content }) }),
+  deleteNote: (bookId, noteId) =>
+    request(`/api/books/${bookId}/notes/${noteId}`, { method: "DELETE" }),
 
   // Users
   getUsers: () => request("/api/users"),

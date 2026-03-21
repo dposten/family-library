@@ -1,13 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 import httpx
 
 from auth import get_current_user
 from database import get_db
-from models import Book, Loan, User, UserBook
-from schemas import BookCreate, BookLookup, BookOut, BookStatusUpdate
+from models import Book, Loan, Note, Tag, User, UserBook
+from schemas import BookCreate, BookLookup, BookOut, BookStatusUpdate, NoteCreate, NoteOut, TagOut
+
+COVERS_DIR = Path("/app/data/covers")
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
@@ -16,7 +22,7 @@ router = APIRouter(prefix="/api/books", tags=["books"])
 
 async def _fetch_open_library(isbn: str) -> dict | None:
     url = f"https://openlibrary.org/isbn/{isbn}.json"
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         r = await client.get(url)
         if r.status_code != 200:
             return None
@@ -30,7 +36,7 @@ async def _fetch_open_library(isbn: str) -> dict | None:
     authors_list = data.get("authors", [])
     if authors_list:
         author_key = authors_list[0].get("key", "")
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             ar = await client.get(f"https://openlibrary.org{author_key}.json")
             if ar.status_code == 200:
                 author = ar.json().get("name")
@@ -67,7 +73,7 @@ async def _fetch_open_library(isbn: str) -> dict | None:
 
 async def _fetch_google_books(isbn: str) -> dict | None:
     url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         r = await client.get(url)
         if r.status_code != 200:
             return None
@@ -106,6 +112,11 @@ async def _fetch_google_books(isbn: str) -> dict | None:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@router.get("/tags", response_model=list[TagOut])
+def list_tags(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    return db.query(Tag).order_by(Tag.category, Tag.name).all()
+
+
 @router.get("/lookup", response_model=BookLookup)
 async def lookup_isbn(isbn: str = Query(..., min_length=10)):
     data = await _fetch_open_library(isbn)
@@ -138,10 +149,12 @@ def _book_to_out(book: Book, current_user: User, db: Session) -> BookOut:
 def list_books(
     q: str | None = Query(None),
     status: str | None = Query(None),
+    tags: str | None = Query(None),
+    sort: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Book).options(joinedload(Book.added_by))
+    query = db.query(Book).options(joinedload(Book.added_by), selectinload(Book.tags))
 
     if q:
         like = f"%{q}%"
@@ -161,7 +174,25 @@ def list_books(
             )
         )
 
-    books = query.order_by(Book.title).all()
+    if tags:
+        tag_ids = [int(t) for t in tags.split(",") if t.strip().isdigit()]
+        if tag_ids:
+            query = query.filter(Book.tags.any(Tag.id.in_(tag_ids)))
+
+    if sort == "title_desc":
+        query = query.order_by(Book.title.desc())
+    elif sort == "author":
+        query = query.order_by(Book.author)
+    elif sort == "year_desc":
+        query = query.order_by(Book.year.desc())
+    elif sort == "year_asc":
+        query = query.order_by(Book.year.asc())
+    elif sort == "newest":
+        query = query.order_by(Book.added_at.desc())
+    else:
+        query = query.order_by(Book.title)
+
+    books = query.all()
     return [_book_to_out(b, current_user, db) for b in books]
 
 
@@ -206,9 +237,72 @@ def get_book(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    book = db.query(Book).options(joinedload(Book.added_by)).filter(Book.id == book_id).first()
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(Book.id == book_id)
+        .first()
+    )
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
+    return _book_to_out(book, current_user, db)
+
+
+@router.post("/{book_id}/tags/{tag_id}", response_model=BookOut)
+def add_book_tag(
+    book_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(Book.id == book_id)
+        .first()
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    tag = db.get(Tag, tag_id)
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    if tag not in book.tags:
+        book.tags.append(tag)
+        db.commit()
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(Book.id == book_id)
+        .first()
+    )
+    return _book_to_out(book, current_user, db)
+
+
+@router.delete("/{book_id}/tags/{tag_id}", response_model=BookOut)
+def remove_book_tag(
+    book_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(Book.id == book_id)
+        .first()
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    tag = db.get(Tag, tag_id)
+    if tag and tag in book.tags:
+        book.tags.remove(tag)
+        db.commit()
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(Book.id == book_id)
+        .first()
+    )
     return _book_to_out(book, current_user, db)
 
 
@@ -247,3 +341,144 @@ def update_status(
         db.add(user_book)
     db.commit()
     return _book_to_out(book, current_user, db)
+
+
+# ── Cover upload ───────────────────────────────────────────────────────────────
+
+@router.post("/{book_id}/cover", response_model=BookOut)
+async def upload_cover(
+    book_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="File must be jpg, jpeg, png, or webp")
+
+    # Remove any previous cover file for this book
+    for old_ext in ALLOWED_EXTENSIONS:
+        old_path = COVERS_DIR / f"{book_id}.{old_ext}"
+        if old_path.exists():
+            old_path.unlink()
+
+    cover_path = COVERS_DIR / f"{book_id}.{ext}"
+    contents = await file.read()
+    cover_path.write_bytes(contents)
+
+    book.cover_url = f"/covers/{book_id}.{ext}"
+    db.commit()
+    db.refresh(book)
+    return _book_to_out(book, current_user, db)
+
+
+# ── Metadata refresh ───────────────────────────────────────────────────────────
+
+@router.put("/{book_id}/refresh", response_model=BookOut)
+async def refresh_metadata(
+    book_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if not book.isbn:
+        raise HTTPException(status_code=400, detail="Book has no ISBN — cannot refresh metadata")
+
+    data = await _fetch_open_library(book.isbn)
+    if not data:
+        data = await _fetch_google_books(book.isbn)
+    if not data:
+        raise HTTPException(status_code=404, detail="No metadata found for this ISBN")
+
+    book.title = data["title"] or book.title
+    book.subtitle = data.get("subtitle")
+    book.author = data.get("author")
+    book.publisher = data.get("publisher")
+    book.year = data.get("year")
+    book.description = data.get("description")
+
+    # Don't overwrite a locally uploaded cover
+    if not (book.cover_url and book.cover_url.startswith("/covers/")):
+        book.cover_url = data.get("cover_url")
+
+    db.commit()
+    db.refresh(book)
+    return _book_to_out(book, current_user, db)
+
+
+# ── Notes ──────────────────────────────────────────────────────────────────────
+
+@router.get("/{book_id}/notes", response_model=list[NoteOut])
+def get_notes(
+    book_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return (
+        db.query(Note)
+        .options(joinedload(Note.author))
+        .filter(Note.book_id == book_id)
+        .order_by(Note.created_at)
+        .all()
+    )
+
+
+@router.post("/{book_id}/notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
+def add_note(
+    book_id: int,
+    payload: NoteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    note = Note(book_id=book_id, user_id=current_user.id, content=payload.content)
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    # Re-fetch with author joined
+    return db.query(Note).options(joinedload(Note.author)).filter(Note.id == note.id).first()
+
+
+@router.put("/{book_id}/notes/{note_id}", response_model=NoteOut)
+def edit_note(
+    book_id: int,
+    note_id: int,
+    payload: NoteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    note = db.query(Note).filter(Note.id == note_id, Note.book_id == book_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not allowed to edit this note")
+    note.content = payload.content
+    db.commit()
+    return db.query(Note).options(joinedload(Note.author)).filter(Note.id == note_id).first()
+
+
+@router.delete("/{book_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_note(
+    book_id: int,
+    note_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    note = db.query(Note).filter(Note.id == note_id, Note.book_id == book_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not allowed to delete this note")
+    db.delete(note)
+    db.commit()

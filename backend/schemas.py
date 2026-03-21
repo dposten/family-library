@@ -21,6 +21,15 @@ class Token(BaseModel):
     user: UserOut
 
 
+# ── Tags ──────────────────────────────────────────────────────────────────────
+
+class TagOut(BaseModel):
+    id: int
+    name: str
+    category: str
+    model_config = {"from_attributes": True}
+
+
 # ── Books ─────────────────────────────────────────────────────────────────────
 
 class BookLookup(BaseModel):
@@ -57,6 +66,7 @@ class BookOut(BaseModel):
     added_by: UserOut | None = None
     active_loan: "LoanOut | None" = None
     my_status: str | None = None
+    tags: list[TagOut] = []
     model_config = {"from_attributes": True}
 
 class BookStatusUpdate(BaseModel):
@@ -86,6 +96,22 @@ class LoanOut(BaseModel):
     book: BookOut | None = None
     loaned_to: UserOut | None = None
     loaned_by: UserOut | None = None
+    model_config = {"from_attributes": True}
+
+
+# ── Notes ─────────────────────────────────────────────────────────────────────
+
+class NoteCreate(BaseModel):
+    content: str
+
+class NoteOut(BaseModel):
+    id: int
+    book_id: int
+    user_id: int
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    author: UserOut | None = None
     model_config = {"from_attributes": True}
 
 
