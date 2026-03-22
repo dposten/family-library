@@ -5,10 +5,12 @@ services:
       dockerfile: Dockerfile
 
     ports:
-      - "8000:8000"
+      - "8000:8000" # change left side to any free host port e.g. 8123:8000
     volumes:
       - ./data:/app/data
     environment:
       - SECRET_KEY=change-this-in-production
       - DATABASE_URL=sqlite:///./data/library.db
+      - PUID=1000 #set to your user, or remove to run as root
+      - PGID=100 #set to your user, or remove to run as root
     restart: unless-stopped
