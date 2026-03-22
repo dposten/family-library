@@ -167,17 +167,16 @@ def list_books(
             UserBook,
             (UserBook.book_id == Book.id) & (UserBook.user_id == current_user.id),
             isouter=True,
-        ).filter(
-            or_(
-                UserBook.status == status,
-                (status == "unread") & UserBook.id.is_(None),
-            )
         )
+        if status == "unread":
+            query = query.filter(or_(UserBook.status == "unread", UserBook.id.is_(None)))
+        else:
+            query = query.filter(UserBook.status == status)
 
     if tags:
         tag_ids = [int(t) for t in tags.split(",") if t.strip().isdigit()]
-        if tag_ids:
-            query = query.filter(Book.tags.any(Tag.id.in_(tag_ids)))
+        for tag_id in tag_ids:
+            query = query.filter(Book.tags.any(Tag.id == tag_id))
 
     if sort == "title_desc":
         query = query.order_by(Book.title.desc())
