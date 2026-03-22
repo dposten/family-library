@@ -8,16 +8,18 @@ A self-hosted PWA for cataloging your family's physical book collection.
 docker compose up --build
 ```
 
-Then open **http://localhost:8000** in your browser (or your local IP on your phone).
+Then open **server-ip:port** you set in your yml in your browser (or your local IP on your phone).
 
 ## Features
 
-- **Barcode scanning** — point your phone camera at any book's barcode
+- **Barcode scanning** — point your phone camera at any book's barcode (alternatively can manually enter ISBN)
 - **Auto metadata** — title, author, cover art fetched from Open Library / Google Books
 - **Reading status** — per-user "unread / reading / read" tracking
 - **Loan tracking** — record who borrowed what, mark returned
 - **Multiple accounts** — first registered user becomes admin
 - **PWA installable** — "Add to Home Screen" on iOS & Android
+- **Tags** — Select tags for fiction, non-fiction, genres, age demographic
+- **Search** — Lookup authors or title names
 
 ## Local Development
 
@@ -51,7 +53,3 @@ Phone (PWA) ──► FastAPI ──► Open Library API
                   │
               SQLite DB (./data/)
 ```
-
-## API Docs
-
-Interactive docs available at **http://localhost:8000/docs** when running.
