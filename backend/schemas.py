@@ -41,6 +41,7 @@ class BookLookup(BaseModel):
     year: int | None = None
     description: str | None = None
     cover_url: str | None = None
+    suggested_tag_ids: list[int] = []
 
 class BookCreate(BaseModel):
     isbn: str | None = None
@@ -51,6 +52,7 @@ class BookCreate(BaseModel):
     year: int | None = None
     description: str | None = None
     cover_url: str | None = None
+    is_private: bool = False
 
 class BookOut(BaseModel):
     id: int
@@ -63,6 +65,7 @@ class BookOut(BaseModel):
     description: str | None
     cover_url: str | None
     added_at: datetime
+    is_private: bool = False
     added_by: UserOut | None = None
     active_loan: "LoanOut | None" = None
     my_status: str | None = None

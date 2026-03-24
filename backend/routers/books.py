@@ -11,6 +11,10 @@ from auth import get_current_user
 from database import get_db
 from models import Book, Loan, Note, Tag, User, UserBook
 from schemas import BookCreate, BookLookup, BookOut, BookStatusUpdate, NoteCreate, NoteOut, TagOut
+from pydantic import BaseModel
+
+class PrivacyUpdate(BaseModel):
+    is_private: bool
 
 COVERS_DIR = Path("/app/data/covers")
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
@@ -59,6 +63,15 @@ async def _fetch_open_library(isbn: str) -> dict | None:
 
     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 
+    # Collect subjects from all available fields
+    subjects: list[str] = []
+    for key in ("subjects", "subject_places", "subject_times", "subject_people"):
+        for entry in data.get(key, []):
+            if isinstance(entry, str):
+                subjects.append(entry)
+            elif isinstance(entry, dict) and "name" in entry:
+                subjects.append(entry["name"])
+
     return {
         "isbn": isbn,
         "title": title,
@@ -68,6 +81,7 @@ async def _fetch_open_library(isbn: str) -> dict | None:
         "year": year,
         "description": description or None,
         "cover_url": cover_url,
+        "subjects": subjects,
     }
 
 
@@ -107,7 +121,23 @@ async def _fetch_google_books(isbn: str) -> dict | None:
         "year": year,
         "description": info.get("description"),
         "cover_url": cover_url,
+        "subjects": info.get("categories", []),
     }
+
+
+def _match_subjects_to_tags(subjects: list[str], tags: list[Tag]) -> list[int]:
+    """Case-insensitive substring match of Open Library subjects against predefined tags."""
+    import re
+    if not subjects:
+        return []
+    subjects_blob = " | ".join(s.lower() for s in subjects)
+    matched: list[int] = []
+    for tag in tags:
+        # Strip parenthetical suffixes for matching, e.g. "Young Adult (13–18)" → "young adult"
+        tag_core = re.sub(r"\s*\([^)]+\)", "", tag.name).strip().lower()
+        if tag_core and tag_core in subjects_blob:
+            matched.append(tag.id)
+    return matched
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -118,13 +148,20 @@ def list_tags(db: Session = Depends(get_db), _: User = Depends(get_current_user)
 
 
 @router.get("/lookup", response_model=BookLookup)
-async def lookup_isbn(isbn: str = Query(..., min_length=10)):
+async def lookup_isbn(
+    isbn: str = Query(..., min_length=10),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
     data = await _fetch_open_library(isbn)
     if not data:
         data = await _fetch_google_books(isbn)
     if not data:
         raise HTTPException(status_code=404, detail="Book not found for this ISBN")
-    return BookLookup(**data)
+    subjects = data.pop("subjects", [])
+    all_tags = db.query(Tag).all()
+    suggested_tag_ids = _match_subjects_to_tags(subjects, all_tags)
+    return BookLookup(**data, suggested_tag_ids=suggested_tag_ids)
 
 
 def _book_to_out(book: Book, current_user: User, db: Session) -> BookOut:
@@ -155,6 +192,11 @@ def list_books(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Book).options(joinedload(Book.added_by), selectinload(Book.tags))
+
+    # Exclude private books that belong to other users
+    query = query.filter(
+        or_(Book.is_private == False, Book.added_by_user_id == current_user.id)
+    )
 
     if q:
         like = f"%{q}%"
@@ -244,6 +286,26 @@ def get_book(
     )
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
+    if book.is_private and book.added_by_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return _book_to_out(book, current_user, db)
+
+
+@router.patch("/{book_id}/privacy", response_model=BookOut)
+def set_privacy(
+    book_id: int,
+    payload: PrivacyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if book.added_by_user_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only the owner can change privacy")
+    book.is_private = payload.is_private
+    db.commit()
+    db.refresh(book)
     return _book_to_out(book, current_user, db)
 
 

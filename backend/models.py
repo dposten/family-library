@@ -50,6 +50,7 @@ class Book(Base):
     cover_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     added_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     added_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     added_by: Mapped["User | None"] = relationship("User", back_populates="books_added")
     user_books: Mapped[list["UserBook"]] = relationship("UserBook", back_populates="book", cascade="all, delete-orphan")

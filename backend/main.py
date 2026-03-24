@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from database import Base, engine
 from models import Tag
-from routers import auth, books, loans, users
+from routers import auth, books, loans, stats, users
 
 PREDEFINED_TAGS = [
     # Fiction type
@@ -53,6 +53,13 @@ Path("/app/data/covers").mkdir(parents=True, exist_ok=True)
 
 # Create tables and seed tags on startup
 Base.metadata.create_all(bind=engine)
+
+# Migration: add is_private column if it doesn't exist yet (existing databases)
+with engine.connect() as _conn:
+    cols = [row[1] for row in _conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(books)")).fetchall()]
+    if "is_private" not in cols:
+        _conn.execute(__import__("sqlalchemy").text("ALTER TABLE books ADD COLUMN is_private BOOLEAN NOT NULL DEFAULT 0"))
+        _conn.commit()
 with DBSession(engine) as _db:
     for _name, _category in PREDEFINED_TAGS:
         if not _db.query(Tag).filter(Tag.name == _name).first():
@@ -73,6 +80,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(books.router)
 app.include_router(loans.router)
+app.include_router(stats.router)
 app.include_router(users.router)
 
 # Serve uploaded covers — must be mounted BEFORE the SPA catch-all

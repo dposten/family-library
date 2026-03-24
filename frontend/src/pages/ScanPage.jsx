@@ -1,17 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import BarcodeScanner from "../components/BarcodeScanner.jsx";
+
+const TAG_COLORS = {
+  type: { active: "bg-blue-500 border-blue-500 text-white", base: "border-blue-200 text-blue-700 bg-white" },
+  genre: { active: "bg-purple-500 border-purple-500 text-white", base: "border-purple-200 text-purple-700 bg-white" },
+  age: { active: "bg-green-500 border-green-500 text-white", base: "border-green-200 text-green-700 bg-white" },
+};
+const TAG_CATEGORY_ORDER = ["type", "genre", "age"];
+const TAG_CATEGORY_LABELS = { type: "Type", genre: "Genre", age: "Age" };
 
 export default function ScanPage() {
   const navigate = useNavigate();
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [lookupResult, setLookupResult] = useState(null); // null | book data | "not_found"
+  const [lookupResult, setLookupResult] = useState(null);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [manualIsbn, setManualIsbn] = useState("");
   const [coverFile, setCoverFile] = useState(null);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [allTags, setAllTags] = useState([]);
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
+
+  useEffect(() => {
+    api.getTags().then(setAllTags).catch(() => {});
+  }, []);
 
   async function handleDetected(isbn) {
     if (loading) return;
@@ -22,8 +37,10 @@ export default function ScanPage() {
     try {
       const data = await api.lookupIsbn(isbn);
       setLookupResult(data);
+      setSelectedTagIds(data.suggested_tag_ids || []);
     } catch {
       setLookupResult({ isbn, title: "", notFound: true });
+      setSelectedTagIds([]);
     } finally {
       setLoading(false);
     }
@@ -34,13 +51,21 @@ export default function ScanPage() {
     if (manualIsbn.trim()) handleDetected(manualIsbn.trim());
   }
 
+  function toggleTag(tagId) {
+    setSelectedTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    );
+  }
+
   async function confirmAdd() {
     setAdding(true);
     try {
-      const book = await api.scanAdd(lookupResult);
+      const book = await api.scanAdd({ ...lookupResult, is_private: isPrivate });
       if (coverFile) {
         await api.uploadCover(book.id, coverFile).catch(() => {});
       }
+      // Apply selected tags
+      await Promise.all(selectedTagIds.map((tagId) => api.addBookTag(book.id, tagId).catch(() => {})));
       navigate(`/book/${book.id}`);
     } catch (err) {
       setError(err.message);
@@ -54,7 +79,14 @@ export default function ScanPage() {
     setScanning(true);
     setManualIsbn("");
     setCoverFile(null);
+    setIsPrivate(false);
+    setSelectedTagIds([]);
   }
+
+  const tagsByCategory = TAG_CATEGORY_ORDER.reduce((acc, cat) => {
+    acc[cat] = allTags.filter((t) => t.category === cat);
+    return acc;
+  }, {});
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-5">
@@ -143,6 +175,47 @@ export default function ScanPage() {
               </>
             )}
 
+            {/* Tag selection */}
+            {allTags.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Tags
+                  {selectedTagIds.length > 0 && (
+                    <span className="ml-1.5 text-xs text-gray-400">({selectedTagIds.length} selected)</span>
+                  )}
+                </p>
+                <div className="space-y-2.5">
+                  {TAG_CATEGORY_ORDER.map((cat) =>
+                    tagsByCategory[cat]?.length > 0 ? (
+                      <div key={cat}>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                          {TAG_CATEGORY_LABELS[cat]}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tagsByCategory[cat].map((tag) => {
+                            const active = selectedTagIds.includes(tag.id);
+                            const colors = TAG_COLORS[cat] || TAG_COLORS.genre;
+                            return (
+                              <button
+                                key={tag.id}
+                                type="button"
+                                onClick={() => toggleTag(tag.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                  active ? colors.active : colors.base
+                                }`}
+                              >
+                                {tag.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Cover upload */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -158,6 +231,17 @@ export default function ScanPage() {
                 <p className="text-xs text-gray-400 mt-1">{coverFile.name}</p>
               )}
             </div>
+
+            {/* Private toggle */}
+            <label className="flex items-center gap-2 mt-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-400"
+              />
+              <span className="text-sm text-gray-700">Private (only visible to me)</span>
+            </label>
 
             {error && (
               <p className="text-red-500 text-sm mt-3 bg-red-50 px-3 py-2 rounded-lg">{error}</p>

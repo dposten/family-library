@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,9 +10,18 @@ from schemas import Token, UserCreate, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+_ALLOW_REGISTRATION = os.getenv("ALLOW_REGISTRATION", "true").strip().lower() != "false"
+
+
+@router.get("/config")
+def auth_config():
+    return {"registration_enabled": _ALLOW_REGISTRATION}
+
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
+    if not _ALLOW_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Registration is disabled")
     if db.query(User).filter(User.username == payload.username).first():
         raise HTTPException(status_code=400, detail="Username already taken")
     # First user becomes admin

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api.js";
 
 export default function LoginPage({ onLogin }) {
@@ -7,6 +7,14 @@ export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
+
+  useEffect(() => {
+    api.getAuthConfig().then((cfg) => {
+      setRegistrationEnabled(cfg.registration_enabled);
+      if (!cfg.registration_enabled) setMode("login");
+    }).catch(() => {});
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -34,19 +42,21 @@ export default function LoginPage({ onLogin }) {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex mb-5 gap-1 p-1 bg-gray-100 rounded-lg">
-            {["login", "register"].map((m) => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); setError(""); }}
-                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
-                  mode === m ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+          {registrationEnabled && (
+            <div className="flex mb-5 gap-1 p-1 bg-gray-100 rounded-lg">
+              {["login", "register"].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => { setMode(m); setError(""); }}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
+                    mode === m ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-3">
             <div>

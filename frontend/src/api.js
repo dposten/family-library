@@ -32,6 +32,7 @@ async function request(path, options = {}) {
 
 export const api = {
   // Auth
+  getAuthConfig: () => request("/auth/config"),
   register: (username, password) =>
     request("/auth/register", { method: "POST", body: JSON.stringify({ username, password }) }),
   login: (username, password) =>
@@ -53,6 +54,8 @@ export const api = {
   addBook: (data) => request("/api/books", { method: "POST", body: JSON.stringify(data) }),
   scanAdd: (data) => request("/api/books/scan", { method: "POST", body: JSON.stringify(data) }),
   deleteBook: (id) => request(`/api/books/${id}`, { method: "DELETE" }),
+  setPrivacy: (id, isPrivate) =>
+    request(`/api/books/${id}/privacy`, { method: "PATCH", body: JSON.stringify({ is_private: isPrivate }) }),
   setStatus: (id, status) =>
     request(`/api/books/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
 
@@ -95,6 +98,9 @@ export const api = {
     request(`/api/books/${bookId}/notes/${noteId}`, { method: "PUT", body: JSON.stringify({ content }) }),
   deleteNote: (bookId, noteId) =>
     request(`/api/books/${bookId}/notes/${noteId}`, { method: "DELETE" }),
+
+  // Stats
+  getStats: () => request("/api/stats"),
 
   // Users
   getUsers: () => request("/api/users"),

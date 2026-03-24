@@ -4,6 +4,7 @@ import Home from "./pages/Home.jsx";
 import ScanPage from "./pages/ScanPage.jsx";
 import BookDetail from "./pages/BookDetail.jsx";
 import LoansPage from "./pages/LoansPage.jsx";
+import StatsPage from "./pages/StatsPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 
 function useAuth() {
@@ -46,6 +47,10 @@ function NavBar({ user, onLogout }) {
         <span className="text-xl">🤝</span>
         <span>Loans</span>
       </NavLink>
+      <NavLink to="/stats" className={linkClass}>
+        <span className="text-xl">📊</span>
+        <span>Stats</span>
+      </NavLink>
       <button
         onClick={onLogout}
         className="flex flex-col items-center gap-0.5 text-xs px-3 py-2 rounded-lg text-gray-500 hover:text-gray-800 transition-colors"
@@ -78,6 +83,7 @@ export default function App() {
           <Route path="/scan" element={<ScanPage />} />
           <Route path="/book/:id" element={<BookDetail currentUser={user} />} />
           <Route path="/loans" element={<LoansPage currentUser={user} />} />
+          <Route path="/stats" element={<StatsPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

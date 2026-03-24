@@ -123,6 +123,15 @@ export default function BookDetail({ currentUser }) {
     }
   }
 
+  async function togglePrivacy() {
+    try {
+      const updated = await api.setPrivacy(book.id, !book.is_private);
+      setBook(updated);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   async function deleteBook() {
     if (!confirm(`Remove "${book.title}" from the catalog?`)) return;
     try {
@@ -284,6 +293,24 @@ export default function BookDetail({ currentUser }) {
             </div>
           )}
         </div>
+
+        {/* Privacy toggle — owner only */}
+        {book.added_by?.id === currentUser.id && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={book.is_private || false}
+              onChange={togglePrivacy}
+              className="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-400"
+            />
+            <span className="text-sm text-gray-600">Private (only visible to me)</span>
+          </label>
+        )}
+        {book.is_private && book.added_by?.id !== currentUser.id && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+            🔒 Private
+          </span>
+        )}
 
         {/* Tags */}
         {(() => {
