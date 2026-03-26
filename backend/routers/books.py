@@ -1,7 +1,11 @@
+import csv
+import io
 import os
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -162,6 +166,80 @@ async def lookup_isbn(
     all_tags = db.query(Tag).all()
     suggested_tag_ids = _match_subjects_to_tags(subjects, all_tags)
     return BookLookup(**data, suggested_tag_ids=suggested_tag_ids)
+
+
+@router.get("/export")
+def export_books(
+    format: str = Query("csv", pattern="^(csv|txt)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    books = (
+        db.query(Book)
+        .options(joinedload(Book.added_by), selectinload(Book.tags))
+        .filter(or_(Book.is_private == False, Book.added_by_user_id == current_user.id))
+        .order_by(Book.title)
+        .all()
+    )
+
+    # Batch-fetch read statuses for the current user to avoid N+1 queries
+    book_ids = [b.id for b in books]
+    status_map: dict[int, str] = {}
+    if book_ids:
+        for ub in db.query(UserBook).filter(
+            UserBook.user_id == current_user.id,
+            UserBook.book_id.in_(book_ids),
+        ).all():
+            status_map[ub.book_id] = ub.status
+
+    filename = f"family-library-export-{date.today().isoformat()}.{format}"
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "Title", "Author", "ISBN", "Publisher", "Year",
+            "Description", "Tags", "My Status", "Date Added", "Added By",
+        ])
+        for book in books:
+            writer.writerow([
+                book.title or "",
+                book.author or "",
+                book.isbn or "",
+                book.publisher or "",
+                book.year if book.year is not None else "",
+                book.description or "",
+                "; ".join(t.name for t in book.tags),
+                status_map.get(book.id, "unread"),
+                book.added_at.date().isoformat() if book.added_at else "",
+                book.added_by.username if book.added_by else "",
+            ])
+        content = output.getvalue()
+        media_type = "text/csv; charset=utf-8"
+    else:
+        blocks: list[str] = []
+        for book in books:
+            block = "\n".join([
+                f"Title: {book.title or ''}",
+                f"Author: {book.author or ''}",
+                f"ISBN: {book.isbn or ''}",
+                f"Publisher: {book.publisher or ''}",
+                f"Year: {book.year if book.year is not None else ''}",
+                f"Tags: {'; '.join(t.name for t in book.tags)}",
+                f"My Status: {status_map.get(book.id, 'unread')}",
+                f"Date Added: {book.added_at.date().isoformat() if book.added_at else ''}",
+                f"Added By: {book.added_by.username if book.added_by else ''}",
+                f"Description: {book.description or ''}",
+            ])
+            blocks.append(block)
+        content = "\n\n".join(blocks)
+        media_type = "text/plain; charset=utf-8"
+
+    return StreamingResponse(
+        iter([content]),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _book_to_out(book: Book, current_user: User, db: Session) -> BookOut:

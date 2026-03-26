@@ -30,6 +30,26 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+async function downloadFile(path) {
+  const token = getToken();
+  const res = await fetch(path, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Download failed");
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : "export";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export const api = {
   // Auth
   getAuthConfig: () => request("/auth/config"),
@@ -98,6 +118,28 @@ export const api = {
     request(`/api/books/${bookId}/notes/${noteId}`, { method: "PUT", body: JSON.stringify({ content }) }),
   deleteNote: (bookId, noteId) =>
     request(`/api/books/${bookId}/notes/${noteId}`, { method: "DELETE" }),
+
+  // Export
+  exportLibrary: (format) => downloadFile(`/api/books/export?format=${format}`),
+
+  // Settings
+  getLoginImage: () => request("/api/settings/login-image"),
+  uploadLoginImage: (file) => {
+    const token = getToken();
+    const form = new FormData();
+    form.append("file", file);
+    return fetch("/api/settings/login-image", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Upload failed");
+      }
+      return res.json();
+    });
+  },
 
   // Stats
   getStats: () => request("/api/stats"),

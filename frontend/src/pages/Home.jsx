@@ -77,7 +77,7 @@ export default function Home() {
   const activeTagCount = selectedTags.length;
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-5 pb-4">
+    <div className="max-w-6xl mx-auto px-4 pt-5 pb-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">📚 Library</h1>
         <Link
@@ -177,7 +177,7 @@ export default function Home() {
 
       <div className="mt-4">
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-pulse">
                 <div className="aspect-[2/3] bg-gray-200" />
@@ -199,7 +199,7 @@ export default function Home() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
             {books.map((book) => (
               <BookCard key={book.id} book={book} />
             ))}

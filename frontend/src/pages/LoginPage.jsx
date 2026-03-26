@@ -8,13 +8,36 @@ export default function LoginPage({ onLogin }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
+  const [loginBg, setLoginBg] = useState(null);
+  const [bgUploading, setBgUploading] = useState(false);
+
+  const isAdmin = (() => {
+    try { return JSON.parse(localStorage.getItem("user"))?.is_admin === true; } catch { return false; }
+  })();
 
   useEffect(() => {
     api.getAuthConfig().then((cfg) => {
       setRegistrationEnabled(cfg.registration_enabled);
       if (!cfg.registration_enabled) setMode("login");
     }).catch(() => {});
+
+    api.getLoginImage().then((data) => setLoginBg(data.url)).catch(() => {});
   }, []);
+
+  async function handleBgUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBgUploading(true);
+    try {
+      const data = await api.uploadLoginImage(file);
+      setLoginBg(data.url + "?t=" + Date.now());
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBgUploading(false);
+      e.target.value = "";
+    }
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -33,7 +56,10 @@ export default function LoginPage({ onLogin }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-sky-50 to-white">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-sky-50 to-white"
+      style={loginBg ? { backgroundImage: `url(${loginBg})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}
+    >
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-6xl mb-3">📚</div>
@@ -102,6 +128,21 @@ export default function LoginPage({ onLogin }) {
           <p className="text-center text-xs text-gray-400 mt-4">
             The first account created becomes the admin.
           </p>
+        )}
+
+        {isAdmin && (
+          <div className="mt-4 text-center">
+            <label className="inline-block cursor-pointer text-xs text-white/70 hover:text-white bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg transition-colors">
+              {bgUploading ? "Uploading…" : loginBg ? "Change background" : "Set background image"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                disabled={bgUploading}
+                onChange={handleBgUpload}
+              />
+            </label>
+          </div>
         )}
       </div>
     </div>

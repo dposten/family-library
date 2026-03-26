@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from database import Base, engine
 from models import Tag
-from routers import auth, books, loans, stats, users
+from routers import auth, books, loans, settings, stats, users
 
 PREDEFINED_TAGS = [
     # Fiction type
@@ -80,6 +80,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(books.router)
 app.include_router(loans.router)
+app.include_router(settings.router)
 app.include_router(stats.router)
 app.include_router(users.router)
 
