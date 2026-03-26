@@ -54,17 +54,18 @@ A single Docker container (multi-stage build) serves everything on port 8000: Fa
 
 ### Frontend Structure (`frontend/src/`)
 - `App.jsx` — React Router setup, auth context (JWT in localStorage), and `NavBar` sidebar component
-- `api.js` — Centralized fetch helpers that attach the Bearer token; multipart uploads (covers, login image) use raw `fetch` directly
+- `api.js` — Centralized fetch helpers that attach the Bearer token; multipart uploads (covers, login image) and file downloads use raw `fetch` directly via private helpers (`downloadFile`)
 - `pages/` — Full-page route components (`Home`, `BookDetail`, `ScanPage`, `LoansPage`, `StatsPage`, `LoginPage`)
 - `components/` — Reusable UI pieces (`BookCard`, `SearchBar`, `LoanBadge`, `BarcodeScanner`)
 
 ### Key Design Decisions
 - **Auth**: Stateless JWT; first registered user becomes admin. Token stored in localStorage. The `/login` route renders `LoginPage` even when authenticated (to support account switching without losing the current session until a new login succeeds).
-- **Navigation**: Persistent left sidebar (`NavBar` in `App.jsx`); `w-14` icons-only on mobile, `md:w-48` with labels on desktop. Content area uses `ml-14 md:ml-48` for clearance. Account button opens a dropdown with "Switch Account" (navigate to `/login`, token kept) and "Logout" (clears token + user, sets state to null).
+- **Navigation**: Persistent left sidebar (`NavBar` in `App.jsx`); `w-14` icons-only on mobile, `md:w-48` with labels on desktop. Content area uses `ml-14 md:ml-48` for clearance. Account button opens a dropdown with "Switch Account" (navigate to `/login`, token kept), "Export Library" (inline CSV/TXT picker), and "Logout" (clears token + user, sets state to null).
 - **ISBN lookup**: `GET /api/books/lookup?isbn=...` fetches metadata from Open Library then falls back to Google Books (async via httpx).
 - **Book covers**: Can be auto-fetched from Open Library or uploaded via `POST /api/books/{id}/cover`; stored in `data/covers/`.
 - **Login background**: Admin-only. `POST /api/settings/login-image` saves the image as `data/covers/login_bg.{ext}`; `GET /api/settings/login-image` returns its `/covers/` URL. `LoginPage` applies it as a CSS background-image and shows the upload control only when `localStorage.user.is_admin === true`.
 - **Book grid**: `repeat(auto-fill, minmax(170px, 1fr))` — no breakpoints. Outer container is `max-w-6xl` to allow 4–6 columns on wide desktops.
+- **Export**: `GET /api/books/export?format=csv|txt` returns a file download (`Content-Disposition: attachment`). Includes all public books plus the requesting user's own private books. Fields: title, author, ISBN, publisher, year, description, tags, per-user read status (batch-fetched from `UserBook`), date added, and added-by username. Built with Python stdlib `csv`/`io` — no new dependencies. Frontend uses a private `downloadFile` helper in `api.js` (authenticated fetch → blob → synthetic `<a download>`). The `/export` route is defined before `/{book_id}` in `books.py` to prevent FastAPI from matching "export" as a book ID.
 - **Tags**: ~30 predefined tags with categories (type/genre/age); many-to-many with books.
 - **PWA**: Service worker configured in `vite.config.js`; Open Library cover images cached for 30 days.
 
