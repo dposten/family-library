@@ -53,3 +53,18 @@ Phone (PWA) ──► FastAPI ──► Open Library API
                   │
               SQLite DB (./data/)
 ```
+
+## Screenshots
+
+### Library Landing Page
+<img width="958" height="1023" alt="image" src="https://github.com/user-attachments/assets/38ddc03e-40c8-40c5-b2a8-bfd5fc0d1ee7" />
+
+### Scanning New Books
+<img width="954" height="1023" alt="image" src="https://github.com/user-attachments/assets/1b043403-7b92-4e4c-a34b-cb322f03f620" />
+
+### ISBN Lookup
+- Pulls cover image if available
+- Option to manually load cover if needed
+- Change Tags, select age, select private (visible only to user)
+<img width="951" height="1024" alt="image" src="https://github.com/user-attachments/assets/4b0b4d0f-069d-4bc8-86ad-66fc40c648e9" />
+
